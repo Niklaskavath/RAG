@@ -1,5 +1,13 @@
-import ollama
-from collections.abc import Generator
+from ollama import (
+    chat,
+    ps,
+    show,
+    ChatResponse,
+    ResponseError
+)
+
+from collections.abc import Generator, Iterator
+from typing import Literal, overload
 
 class ChatBot:
     """
@@ -47,8 +55,23 @@ class ChatBot:
             }
         ]
     
+    @overload
     def ask(
-            self, question: str, 
+            self,
+            question: str,
+            stream: Literal[True] = True
+    ) -> Generator[str, None, None]: ...
+    
+    @overload
+    def ask(
+            self,
+            question: str,
+            stream: Literal[False]
+    ) -> str: ...
+    
+    def ask(
+            self,
+            question: str,
             stream: bool = True
         ) -> Generator[str, None, None] | str:
         """
@@ -74,18 +97,16 @@ class ChatBot:
             }
         )
         
-        response = ollama.chat(
+        # Prompt model with the question and message history
+        response = chat(
             model = self.model,
             messages = self.messages,
             stream = stream
         )
         
-        # If answer is a stream, return the answer as a generator stream
-        if stream: 
-            return self._generate_stream(response) # type: ignore
-        
-        # If answer is given in full, return the full answer
-        return self._generate_full(response) # type: ignore
+        return self._generate_response(
+            response = response
+        )
     
     def _is_ollama_running(self) -> bool:
         """
@@ -96,7 +117,7 @@ class ChatBot:
         """
         
         try:
-            ollama.ps()
+            ps()
         except ConnectionError:
             return False
         return True
@@ -113,91 +134,79 @@ class ChatBot:
         """
         
         try:
-            ollama.show(model)
-        except ollama.ResponseError:
+            show(model)
+        except ResponseError:
             return False
         return True
     
-    def _generate_stream(
+    @overload
+    def _generate_response(
             self, 
-            response: Generator[dict, None, None]
-        ) -> Generator[str, None, None]:
-        """
-        Private helper that returns a textual response stream using the response
-        generator from the ollama chat API. The response is appended to the 
-        message history as it is generated.
-        
-        Args:
-            response (generator): A generator stream of the response.
-        
-        Returns:
-            generator: A generator stream of the textual response.
-        """
-        
-        # Append an empty assistant response to the message history, which will
-        # be filled with the response text as they are generated.
-        self.messages.append(
-            {
-                "role" : "assistant",
-                "content" : ""
-            }
-        )
-        
-        # Get the position of the assistant response in the message history
-        # so that the text chunks can be appended to the correct message
-        response_pos = len(self.messages) - 1
-        
-        # Return a generator that yields the text chunks as they are generated
-        return self._response_chunk_generator(response, response_pos)
-            
-    def _response_chunk_generator(
+            response: Iterator[ChatResponse]
+        ) -> Generator[str, None, None]: ...
+    
+    @overload
+    def _generate_response(
             self,
-            response: Generator[dict, None, None],
-            response_pos: int
-    ) -> Generator[str, None, None]:
+            response: ChatResponse
+        ) -> str: ...
+    
+    def _generate_response(
+        self,
+        response: Iterator[ChatResponse] | ChatResponse
+        ) -> Generator[str, None, None] | str:
         """
-        Private helper that generates a textual response stream using response
-        generator from the ollama chat API.
+        Generates a response based on the model's output.
         
         Args:
-            response (generator): A generator stream of the response.
+            response (Iterator[ChatResponse] | ChatResponse): The response from
+            the model.
             
-            response_pos (int): The position of the assistant response in the
-                message history so that the text chunks can be appended to the
-                correct message.
-                
+            stream (bool): Whether the response is being streamed or not.
+            
         Returns:
-            generator: A generator stream of the textual response.
-        """    
-        
-        for chunk in response:
-            text_chunk = chunk["message"]["content"]
-            
-            # Append the text chunk to the message corresponding to the question
-            self.messages[response_pos]["content"] += text_chunk
-            
-            yield text_chunk
-
-    def _generate_full(self, response: dict) -> str:
-        """
-        Private helper that adds the full textual response to the message 
-        history and returns it.
-        
-        Args:
-            response (dict): The response from the ollama chat API.
-        
-        Returns:
-            string: The response to the question.
+            Generator | str: The generated response, either as a stream or in
+                full.
         """
         
+        # If streaming, yield text chunks as they are received
+        if isinstance(response, Iterator):
+            
+            # Append an empty response to the message history to be filled as
+            # the stream is received
+            self.messages.append(
+                {
+                    "role" : "assistant",
+                    "content" : ""
+                }
+            )
+            
+            # Get the postion of the message corresponding to the appended 
+            # empty response
+            message_pos = len(self.messages) - 1
+            
+            # Define a generator function to yield text chunks from the response
+            def generator_stream():
+                for chunk in response:
+                    text_chunk = chunk["message"]["content"]
+                    
+                    # Append the text chunk to the message corresponding to
+                    # the question
+                    self.messages[message_pos]["content"] += text_chunk
+                    
+                    yield text_chunk
+            
+            return generator_stream()
+        
+        # If not streaming, extract the full response text
         response_text = response["message"]["content"]
         
-        # Append the user question and the assistant response to the message history
+        # Append the assistant response to the message history
         self.messages.append(
             {
                 "role" : "assistant",
                 "content" : response_text
             }
         )
-        
+
         return response_text
