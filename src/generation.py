@@ -5,9 +5,9 @@ from ollama import (
     ChatResponse,
     ResponseError
 )
-
 from collections.abc import Generator, Iterator
 from typing import Literal, overload
+from functools import singledispatchmethod
 
 class ChatBot:
     """
@@ -22,7 +22,7 @@ class ChatBot:
             self, 
             model_name: str = "llama3.2",
             system_instructions: str = "",
-        ) -> None:
+    ) -> None:
         """
         Initializes the chat bot.
         
@@ -73,7 +73,7 @@ class ChatBot:
             self,
             question: str,
             stream: bool = True
-        ) -> Generator[str, None, None] | str:
+    ) -> Generator[str, None, None] | str:
         """
         Promts the model with a question. User can choose to receive the answer 
         in a stream or as a complete sring.
@@ -104,9 +104,7 @@ class ChatBot:
             stream = stream
         )
         
-        return self._generate_response(
-            response = response
-        )
+        return self._generate_response(response)
     
     def _is_ollama_running(self) -> bool:
         """
@@ -139,69 +137,47 @@ class ChatBot:
             return False
         return True
     
-    @overload
-    def _generate_response(
-            self, 
-            response: Iterator[ChatResponse]
-        ) -> Generator[str, None, None]: ...
-    
-    @overload
-    def _generate_response(
-            self,
-            response: ChatResponse
-        ) -> str: ...
-    
-    def _generate_response(
+    @singledispatchmethod
+    def _generate_response(self, response) -> Generator[str, None, None] | str:
+        raise TypeError(
+            f"Unsupported type: {type(response)}, expected "
+            "Iterator[ChatResponse] or ChatResponse"
+        )
+        
+    @_generate_response.register(Iterator)
+    def _(
         self,
-        response: Iterator[ChatResponse] | ChatResponse
-        ) -> Generator[str, None, None] | str:
-        """
-        Generates a response based on the model's output.
+        response: Iterator[ChatResponse]
+    ) -> Generator[str, None, None]:
+        # Append response placeholder to the message history
+        self.messages.append(
+            {
+                "role" : "assistant",
+                "content" : ""
+            }
+        )
         
-        Args:
-            response (Iterator[ChatResponse] | ChatResponse): The response from
-            the model.
-            
-            stream (bool): Whether the response is being streamed or not.
-            
-        Returns:
-            Generator | str: The generated response, either as a stream or in
-                full.
-        """
+        response_pos = len(self.messages) - 1
         
-        # If streaming, yield text chunks as they are received
-        if isinstance(response, Iterator):
-            
-            # Append an empty response to the message history to be filled as
-            # the stream is received
-            self.messages.append(
-                {
-                    "role" : "assistant",
-                    "content" : ""
-                }
-            )
-            
-            # Get the postion of the message corresponding to the appended 
-            # empty response
-            message_pos = len(self.messages) - 1
-            
-            # Define a generator function to yield text chunks from the response
-            def generator_stream():
-                for chunk in response:
-                    text_chunk = chunk["message"]["content"]
-                    
-                    # Append the text chunk to the message corresponding to
-                    # the question
-                    self.messages[message_pos]["content"] += text_chunk
-                    
-                    yield text_chunk
-            
-            return generator_stream()
+        # Define a generator function to yield text chunks from the response
+        def generator_stream():
+            for chunk in response:
+                text_chunk = chunk["message"]["content"]
+                
+                # Append the text chunk to the response placeholder
+                self.messages[response_pos]["content"] += text_chunk
+                
+                yield text_chunk
         
-        # If not streaming, extract the full response text
+        return generator_stream()
+    
+    @_generate_response.register
+    def _(
+        self,
+        response: ChatResponse
+    ) -> str:
         response_text = response["message"]["content"]
         
-        # Append the assistant response to the message history
         self.messages.append(
             {
                 "role" : "assistant",
