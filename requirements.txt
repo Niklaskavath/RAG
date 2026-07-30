@@ -2,6 +2,7 @@ altair==6.2.2
 annotated-types==0.8.0
 anyio==4.14.2
 appnope==0.1.4
+ast-serialize==0.6.0
 asttokens==3.0.2
 attrs==26.1.0
 blinker==1.9.0
@@ -29,8 +30,11 @@ jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
 jupyter-client==8.9.1
 jupyter-core==5.9.1
+librt==0.13.0
 markupsafe==3.0.3
 matplotlib-inline==0.2.2
+mypy==2.3.0
+mypy-extensions==1.1.0
 narwhals==2.24.0
 nest-asyncio2==1.7.2
 numpy==2.5.1
@@ -38,6 +42,7 @@ ollama==0.6.2
 packaging==26.2
 pandas==3.0.5
 parso==0.8.7
+pathspec==1.1.1
 pexpect==4.9.0
 pillow==12.3.0
 platformdirs==4.11.0
@@ -57,6 +62,7 @@ pyzmq==27.1.0
 referencing==0.37.0
 requests==2.34.2
 rpds-py==2026.6.3
+ruff==0.16.1
 six==1.17.0
 smmap==5.0.3
 stack-data==0.6.3

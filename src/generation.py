@@ -1,13 +1,9 @@
-from ollama import (
-    chat,
-    ps,
-    show,
-    ChatResponse,
-    ResponseError
-)
 from collections.abc import Generator, Iterator
-from typing import Literal, overload
 from functools import singledispatchmethod
+from typing import Literal, overload
+
+from ollama import ChatResponse, ResponseError, chat, ps, show
+
 
 class ChatBot:
     """
@@ -16,7 +12,7 @@ class ChatBot:
     
     # Attribues:
     model: str
-    messages: list[dict]
+    messages: list[dict[str, str]]
     
     def __init__(
             self, 
@@ -75,7 +71,7 @@ class ChatBot:
             stream: bool = True
     ) -> Generator[str, None, None] | str:
         """
-        Promts the model with a question. User can choose to receive the answer 
+        Prompts the model with a question. User can choose to receive the answer 
         in a stream or as a complete sring.
         
         Args:
@@ -98,11 +94,19 @@ class ChatBot:
         )
         
         # Prompt model with the question and message history
-        response = chat(
-            model = self.model,
-            messages = self.messages,
-            stream = stream
-        )
+        response: Iterator[ChatResponse] | ChatResponse
+        if stream:
+            response = chat(
+                model = self.model,
+                messages = self.messages,
+                stream = True
+            )
+        else:
+            response = chat(
+                model = self.model,
+                messages = self.messages,
+                stream = False
+            )
         
         return self._generate_response(response)
     
